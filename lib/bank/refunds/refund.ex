@@ -37,8 +37,12 @@ defmodule Bank.Refunds.Refund do
     refund
     |> cast(attrs, [:payment_id, :merchant_ref, :amount])
     |> validate_required([:payment_id, :merchant_ref, :amount])
-    |> unique_constraint(:payment_id)
+    |> validate_number(:amount, greater_than: 0)
+    |> foreign_key_constraint(:payment_id, message: "payment doesn't exists")
     |> unique_constraint(:merchant_ref)
-    |> foreign_key_constraint(:payment_id)
+    |> check_constraint(:amount,
+      name: :can_perform_refund_from_payments,
+      message: "excessive refund amount requested"
+    )
   end
 end

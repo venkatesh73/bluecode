@@ -6,6 +6,8 @@ defmodule BankWeb.PaymentControllerTest do
   import Bank.PaymentsFixtures
 
   alias Bank.FakeCardNumber
+  alias Bank.Payments
+  alias Bank.Payments.Payment
 
   # Make sure mocks are verified when the test exits
   setup :verify_on_exit!
@@ -61,6 +63,8 @@ defmodule BankWeb.PaymentControllerTest do
                "merchant_ref" => ^merchant_ref,
                "status" => "declined"
              } = json_response(conn, 402)["data"]
+
+      assert %Payment{status: :declined} = Payments.get_payments_by_merchant(merchant_ref)
     end
 
     test "creates 'declined' payment and 403 response on invalid account number", %{conn: conn} do
@@ -77,6 +81,47 @@ defmodule BankWeb.PaymentControllerTest do
                "merchant_ref" => ^merchant_ref,
                "status" => "declined"
              } = json_response(conn, 403)["data"]
+
+      assert %Payment{status: :declined} = Payments.get_payments_by_merchant(merchant_ref)
+    end
+
+    test "creates 'failed' payment and 503 response when account service service unavailable", %{
+      conn: conn
+    } do
+      Bank.MockAccountsService
+      |> expect(:place_hold, fn _account_number, _amount -> {:error, :service_unavailable} end)
+
+      payment_attrs = create_attrs()
+      conn = post(conn, Routes.payment_path(conn, :create), payment: payment_attrs)
+
+      merchant_ref = payment_attrs.merchant_ref
+
+      assert %{
+               "amount" => 1205,
+               "merchant_ref" => ^merchant_ref,
+               "status" => "failed"
+             } = json_response(conn, 503)["data"]
+
+      assert %Payment{status: :failed} = Payments.get_payments_by_merchant(merchant_ref)
+    end
+
+    test "creates 'failed' payment and 500 response when account service internal server error",
+         %{conn: conn} do
+      Bank.MockAccountsService
+      |> expect(:place_hold, fn _account_number, _amount -> {:error, :internal_error} end)
+
+      payment_attrs = create_attrs()
+      conn = post(conn, Routes.payment_path(conn, :create), payment: payment_attrs)
+
+      merchant_ref = payment_attrs.merchant_ref
+
+      assert %{
+               "amount" => 1205,
+               "merchant_ref" => ^merchant_ref,
+               "status" => "failed"
+             } = json_response(conn, 500)["data"]
+
+      assert %Payment{status: :failed} = Payments.get_payments_by_merchant(merchant_ref)
     end
 
     test "renders errors when data is invalid", %{conn: conn} do
@@ -101,8 +146,33 @@ defmodule BankWeb.PaymentControllerTest do
 
       assert Enum.member?(
                json_response(conn, 422)["errors"]["card_number"],
-               "has already been taken"
+               "card with payment already associated"
              )
+    end
+
+    test "returns 409 if merchant_ref is already associated with payment", %{conn: conn} do
+      payment_attrs = create_attrs()
+      payment_fixture(payment_attrs)
+
+      payment_attrs = create_attrs(%{merchant_ref: payment_attrs.merchant_ref})
+      conn = post(conn, Routes.payment_path(conn, :create), payment: payment_attrs)
+
+      assert Enum.member?(
+               json_response(conn, 409)["errors"]["merchant_ref"],
+               "merchant with payment already associated"
+             )
+    end
+
+    test "returns 400 if amount is negative", %{conn: conn} do
+      payment_attrs = create_attrs(%{amount: -1204})
+      conn = post(conn, Routes.payment_path(conn, :create), payment: payment_attrs)
+      assert response(conn, 400)
+    end
+
+    test "returns 422 if card number is invalid", %{conn: conn} do
+      payment_attrs = create_attrs(%{card_number: "wedasdfidfmllkdgjjkjg"})
+      conn = post(conn, Routes.payment_path(conn, :create), payment: payment_attrs)
+      assert response(conn, 422)
     end
   end
 end

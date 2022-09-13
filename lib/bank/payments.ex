@@ -32,4 +32,42 @@ defmodule Bank.Payments do
     |> Payment.changeset(attrs)
     |> Repo.insert()
   end
+
+  def approve(payments) do
+    payments
+    |> Payment.approved_payment()
+    |> Repo.update()
+  end
+
+  @spec get_payments_by_merchant(any) :: any
+  def get_payments_by_merchant(merchant_ref) do
+    query = from(p in Payment, where: p.merchant_ref == ^merchant_ref, lock: "FOR UPDATE")
+    Repo.one(query)
+  end
+
+  @spec decline_payments_by_merchant(any) :: any
+  def decline_payments_by_merchant(merchant_ref) do
+    case get_payments_by_merchant(merchant_ref) do
+      nil ->
+        {:error, :payment_not_found}
+
+      %Payment{} = payment ->
+        payment
+        |> Payment.declined_payment()
+        |> Repo.update()
+    end
+  end
+
+  @spec failed_payments_by_merchant(any) :: any
+  def failed_payments_by_merchant(merchant_ref) do
+    case get_payments_by_merchant(merchant_ref) do
+      nil ->
+        {:error, :payment_not_found}
+
+      %Payment{} = payment ->
+        payment
+        |> Payment.failed_payment()
+        |> Repo.update()
+    end
+  end
 end

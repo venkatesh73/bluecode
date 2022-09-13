@@ -31,4 +31,37 @@ defmodule Bank.PaymentsTest do
   test "create/1 with invalid data returns error changeset" do
     assert {:error, %Ecto.Changeset{}} = Payments.create(@invalid_attrs)
   end
+
+  test "create/1 with negative amounts returns :negative_amount error " do
+    attrs = %{
+      amount: "-1205",
+      merchant_ref: Ecto.UUID.generate(),
+      card_number: FakeCardNumber.generate()
+    }
+
+    assert {:error, %Ecto.Changeset{errors: [amount: {"negative amount", _}]}} =
+             Payments.create(attrs)
+  end
+
+  test "create/1 with 0 amounts returns :invalid_amount error " do
+    attrs = %{
+      amount: "0",
+      merchant_ref: Ecto.UUID.generate(),
+      card_number: FakeCardNumber.generate()
+    }
+
+    assert {:error, %Ecto.Changeset{errors: [amount: {"invalid amount", _}]}} =
+             Payments.create(attrs)
+  end
+
+  test "create/1 with invalid card number returns :invalid_card_number error " do
+    attrs = %{
+      amount: "1205",
+      merchant_ref: Ecto.UUID.generate(),
+      card_number: "123"
+    }
+
+    assert {:error, %Ecto.Changeset{errors: [card_number: {"invalid card_number", _}]}} =
+             Payments.create(attrs)
+  end
 end
